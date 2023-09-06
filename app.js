@@ -1,7 +1,7 @@
 const express = require("express");
 const bodyParser = require("body-parser");
 const mongoose = require("mongoose");
-const _ = require("lodash")
+const _ = require("lodash");
 const date = require(__dirname + "/date.js");
 
 const app = express();
@@ -11,11 +11,11 @@ app.set("view engine", "ejs");
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public"));
 
-// const items = ["Buy Food", "Cook Food", "Eat Food"];
-// const workItems = [];
-
 // Connect to MongoDB
-mongoose.connect("mongodb://127.0.0.1:27017/todolistDB", {
+const uri =
+	"mongodb+srv://admin-harvey:sfoJX2FUCiJl57B5@cluster0.fll2ghs.mongodb.net/todolistDB";
+
+mongoose.connect(uri, {
 	useNewUrlParser: true,
 });
 
@@ -55,25 +55,6 @@ async function insertDefaultItems() {
 	}
 }
 
-// Find items and add to an array, add default items if empty
-let allItems = [];
-
-async function loadItems() {
-	allItems = await Item.find();
-
-	if (allItems.length === 0) {
-		try {
-			await insertDefaultItems();
-		} catch (err) {
-			console.error(err);
-		}
-	}
-
-	console.log("Items loaded successfully...");
-}
-
-loadItems();
-
 // Create listSchema to form database relationships
 const listSchema = {
 	name: {
@@ -85,10 +66,30 @@ const listSchema = {
 
 const List = mongoose.model("List", listSchema);
 
-app.get("/", (req, res) => {
-	const day = date.getDate();
+let errorMessage;
 
-	res.render("list", { listTitle: "Home", newListItems: allItems });
+app.get("/", async (req, res) => {
+	const day = date.getDate();
+	let errorMessage = req.query.errorMessage || "";
+
+	// Find items and add to an array, add default items if empty
+	async function loadItems() {
+		allItems = await Item.find();
+
+		if (allItems.length === 0) {
+			try {
+				await insertDefaultItems();
+			} catch (err) {
+				console.error(err);
+			}
+		}
+
+		console.log("Items loaded successfully...");
+	}
+  
+	await loadItems();
+
+  res.render("list", { listTitle: "Home", newListItems: allItems, errorMessage: errorMessage });
 });
 
 app.post("/", (req, res) => {
@@ -100,20 +101,37 @@ app.post("/", (req, res) => {
 	});
 
 	// "Today" was supposed to be passed as the H1, but I stuck with the date instead"
-	if (listName === "Home") {
-		newItem.save();
-		allItems = [];
-		loadItems();
-		res.redirect("/");
-	} else {
-		// 'foundItems' can be any name you want
-		List.findOne({ name: listName }).then((foundItems) => {
-			foundItems.items.push(newItem);
-			foundItems.save();
-			allItems = [];
-			loadItems();
-			res.redirect(`/${listName}`);
-		});
+	try {
+		if (listName === "Home") {
+			if (newItem.name) {
+				newItem.save();
+				res.redirect("/");
+			} else {
+				console.log("Please add a task...");
+				res.redirect("/?errorMessage=New%20item%20cannot%20be%20left%20empty!");
+			}
+		} else {
+			if (newItem.name) {
+				// 'foundItems' can be any name you want
+				List.findOne({ name: listName }).then((foundItems) => {
+					foundItems.items.push(newItem);
+					foundItems.save();
+					res.redirect(`/${listName}`);
+				});
+			} else {
+				console.log("Please add a task too...");
+        res.redirect(
+					`/${listName}?errorMessage=New%20item%20cannot%20be%20left%20empty!`
+				);
+			}
+		}
+	} catch (err) {
+		if (err.name === "ValidatorError") {
+			res.status(400).send("Validation Error: " + err.message);
+		} else {
+			console.error(err);
+			res.status(500).send("Server Error");
+		}
 	}
 });
 
@@ -134,9 +152,10 @@ app.get("/:customListName", (req, res) => {
 				res.redirect(`/${customListName}`);
 			} else {
 				// Show the list
+        let errorMessage = req.query.errorMessage || ""
 				res.render("list", {
 					listTitle: customListName,
-					newListItems: foundItems.items,
+					newListItems: foundItems.items, errorMessage
 				});
 			}
 		})
@@ -158,9 +177,6 @@ app.post("/delete", (req, res) => {
 				console.error(err);
 			});
 
-		allItems = [];
-		loadItems();
-
 		res.redirect("/");
 	} else {
 		// Find a list (collection) with the name 'listName', $pull(delete) from an array called 'items', a file with the '_id' of 'checkedItemId. Then, callback function
@@ -175,10 +191,7 @@ app.post("/delete", (req, res) => {
 				console.error(err);
 			});
 
-    allItems = []
-    loadItems();
-
-    res.redirect(`/${listName}`)
+		res.redirect(`/${listName}`);
 	}
 });
 
