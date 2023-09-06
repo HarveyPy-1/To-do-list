@@ -6,14 +6,17 @@ const date = require(__dirname + "/date.js");
 
 const app = express();
 
+require('dotenv').config()
+
 app.set("view engine", "ejs");
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public"));
 
+const PORT = process.env.PORT || 3000;
+
 // Connect to MongoDB
-const uri =
-	"mongodb+srv://admin-harvey:sfoJX2FUCiJl57B5@cluster0.fll2ghs.mongodb.net/todolistDB";
+const uri = process.env.MONGODB_URI;
 
 mongoose.connect(uri, {
 	useNewUrlParser: true,
@@ -199,6 +202,6 @@ app.get("/about", (req, res) => {
 	res.render("about");
 });
 
-app.listen(3000, () => {
-	console.log("Server started on port 3000...");
+app.listen(PORT, () => {
+	console.log(`Server started on port ${PORT}...`);
 });
